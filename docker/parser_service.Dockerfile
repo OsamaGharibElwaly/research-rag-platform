@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt -r parser-requirements.txt
 COPY backend ./backend
 
 ENV PYTHONPATH=/app
+ENV PARSER_DATABASE_URL=sqlite:///./parser.db
 ENV UPLOAD_DATABASE_URL=sqlite:///./upload.db
 ENV UPLOAD_DIR=/app/uploads
 

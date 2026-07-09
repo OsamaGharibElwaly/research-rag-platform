@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.services.auth_service.routers import router as auth_router
+from backend.services.parser_service.routers import router as parser_router
 from backend.services.upload_service.routers import router as upload_router
 from backend.shared.logger import get_logger
 from backend.shared.schemas import APIError
@@ -20,14 +21,14 @@ logger = get_logger("dev_server")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Dev server starting (auth + upload on :8000)...")
+    logger.info("Dev server starting (auth + upload + parser on :8000)...")
     yield
     logger.info("Dev server shutting down...")
 
 
 app = FastAPI(
     title="AI Research Assistant API (Dev)",
-    description="Combined auth + upload server for local development",
+    description="Combined auth + upload + parser server for local development",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -75,12 +76,13 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "dev_server",
-        "routes": ["auth", "upload"],
+        "routes": ["auth", "upload", "parser"],
     }
 
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(upload_router)
+app.include_router(parser_router)
 
 
 if __name__ == "__main__":

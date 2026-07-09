@@ -14,13 +14,17 @@ sys.path.insert(0, str(ROOT_DIR))
 from backend.services.auth_service.main import app as auth_app
 from backend.services.auth_service.models import Base as AuthBase
 from backend.services.auth_service.models import get_db as auth_get_db
+from backend.services.parser_service.main import app as parser_app
+from backend.services.parser_service.models.db import Base as ParserBase
+from backend.services.parser_service.models.db import get_db as parser_get_db
 from backend.services.upload_service.main import app as upload_app
 from backend.services.upload_service.models import Base as UploadBase
-from backend.services.upload_service.models import get_db as upload_get_db
+from backend.services.upload_service.models import Paper, get_db as upload_get_db
 from backend.shared.auth import create_access_token
 
 AUTH_DB_URL = "sqlite:///:memory:"
 UPLOAD_DB_URL = "sqlite:///:memory:"
+PARSER_DB_URL = "sqlite:///:memory:"
 
 auth_engine = create_engine(
     AUTH_DB_URL,
@@ -32,12 +36,19 @@ upload_engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
+parser_engine = create_engine(
+    PARSER_DB_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 
 AuthTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=auth_engine)
 UploadTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=upload_engine)
+ParserTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=parser_engine)
 
 AuthBase.metadata.create_all(bind=auth_engine)
 UploadBase.metadata.create_all(bind=upload_engine)
+ParserBase.metadata.create_all(bind=parser_engine)
 
 
 def _auth_db_override():
@@ -56,8 +67,17 @@ def _upload_db_override():
         db.close()
 
 
+def _parser_db_override():
+    db = ParserTestingSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 auth_app.dependency_overrides[auth_get_db] = _auth_db_override
 upload_app.dependency_overrides[upload_get_db] = _upload_db_override
+parser_app.dependency_overrides[parser_get_db] = _parser_db_override
 
 
 @pytest.fixture
@@ -71,6 +91,22 @@ def upload_client(tmp_path, monkeypatch):
     monkeypatch.setattr("backend.services.upload_service.config.UPLOAD_DIR", upload_dir)
     monkeypatch.setattr("backend.services.upload_service.services.UPLOAD_DIR", upload_dir)
     return TestClient(upload_app)
+
+
+@pytest.fixture
+def parser_client(tmp_path, monkeypatch):
+    upload_dir = str(tmp_path / "uploads")
+    monkeypatch.setattr("backend.services.upload_service.config.UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr("backend.services.upload_service.services.UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr(
+        "backend.services.parser_service.services.paper_access.engine",
+        upload_engine,
+    )
+    monkeypatch.setattr(
+        "backend.services.parser_service.services.paper_access.UploadSessionLocal",
+        UploadTestingSession,
+    )
+    return TestClient(parser_app)
 
 
 @pytest.fixture
@@ -100,5 +136,56 @@ def other_user_headers():
 
 
 @pytest.fixture
+def current_user_id(auth_client, auth_headers):
+    response = auth_client.get("/api/auth/me", headers=auth_headers)
+    return response.json()["data"]["user"]["id"]
+
+
+@pytest.fixture
 def sample_pdf():
     return b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
+
+
+@pytest.fixture
+def make_pdf(tmp_path):
+    import fitz
+
+    def _make(
+        filename: str = "test.pdf",
+        *,
+        pages: int = 1,
+        title: str = "Sample Research Paper",
+        abstract: str = "This is a sample abstract for testing.",
+        body: str = "Introduction content for the research paper.",
+    ) -> tuple[bytes, str]:
+        pdf_path = tmp_path / filename
+        doc = fitz.open()
+        for index in range(pages):
+            page = doc.new_page()
+            page.insert_text(
+                (72, 72),
+                f"{title}\n\nAbstract\n{abstract}\n\n{body}\n\nPage {index + 1}",
+            )
+        doc.save(str(pdf_path))
+        doc.close()
+        content = pdf_path.read_bytes()
+        return content, str(pdf_path)
+
+    return _make
+
+
+@pytest.fixture
+def uploaded_paper(upload_client, auth_headers, make_pdf):
+    content, _ = make_pdf(
+        "research.pdf",
+        title="Neural Network Survey",
+        abstract="We survey neural network methods.",
+        body="This paper discusses deep learning.",
+    )
+    response = upload_client.post(
+        "/upload",
+        headers=auth_headers,
+        files={"file": ("research.pdf", content, "application/pdf")},
+    )
+    assert response.status_code == 201
+    return response.json()["data"]["paper"]

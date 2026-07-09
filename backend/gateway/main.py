@@ -15,9 +15,10 @@ logger = get_logger("api_gateway")
 
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
 UPLOAD_SERVICE_URL = os.getenv("UPLOAD_SERVICE_URL", "http://localhost:8002")
+PARSER_SERVICE_URL = os.getenv("PARSER_SERVICE_URL", "http://localhost:8003")
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "8000"))
 
-PROTECTED_PREFIXES = ("/upload", "/papers", "/paper/")
+PROTECTED_PREFIXES = ("/upload", "/papers", "/paper/", "/parse")
 
 
 @asynccontextmanager
@@ -63,6 +64,8 @@ def _resolve_upstream(path: str) -> str | None:
         return AUTH_SERVICE_URL
     if path.startswith("/upload") or path.startswith("/papers") or path.startswith("/paper/"):
         return UPLOAD_SERVICE_URL
+    if path.startswith("/parse"):
+        return PARSER_SERVICE_URL
     return None
 
 

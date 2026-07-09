@@ -28,6 +28,24 @@ services:
       - upload_data:/app
       - upload_files:/app/uploads
 
+  parser_service:
+    build:
+      context: .
+      dockerfile: docker/parser_service.Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key}
+      - PARSER_DATABASE_URL=sqlite:///./parser.db
+      - UPLOAD_DATABASE_URL=sqlite:///./upload.db
+      - UPLOAD_DIR=/app/uploads
+      - PARSER_SERVICE_PORT=8003
+    volumes:
+      - parser_data:/app
+      - upload_files:/app/uploads
+    depends_on:
+      - upload_service
+
   gateway:
     build:
       context: .
@@ -38,11 +56,14 @@ services:
       - GATEWAY_PORT=8000
       - AUTH_SERVICE_URL=http://auth_service:8001
       - UPLOAD_SERVICE_URL=http://upload_service:8002
+      - PARSER_SERVICE_URL=http://parser_service:8003
     depends_on:
       - auth_service
       - upload_service
+      - parser_service
 
 volumes:
   auth_data:
   upload_data:
   upload_files:
+  parser_data:

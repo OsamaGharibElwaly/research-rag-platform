@@ -9,8 +9,9 @@ This repository implements an AI Research Paper Assistant using a **microservice
 **Current status:**
 - Authentication service — implemented and tested
 - Upload service — implemented and tested
+- Parser service — implemented and tested
 - API Gateway — implemented
-- Frontend — minimal auth + upload UI for integration testing
+- Frontend — minimal auth + upload + parse UI for integration testing
 
 ## Goals
 
@@ -118,9 +119,18 @@ flowchart TB
 | GET | `/papers` | List user's papers (protected) |
 | DELETE | `/paper/{id}` | Delete paper (protected) |
 
+### Parser Service (`:8003`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/parse` | Parse uploaded PDF by `paper_id` (protected) |
+
+Request body: `{ "paper_id": 1 }`
+
 ### API Gateway (`:8000`)
 
-Routes all client requests to the appropriate microservice. Enforces `Authorization` header on upload routes.
+Routes all client requests to the appropriate microservice. Enforces `Authorization` header on protected routes (`/upload`, `/papers`, `/paper/*`, `/parse`).
 
 ## Frontend Structure
 
@@ -178,8 +188,9 @@ sequenceDiagram
 2. Gateway routes by path prefix:
    - `/api/auth/*` → Auth Service
    - `/upload`, `/papers`, `/paper/*` → Upload Service
+   - `/parse` → Parser Service
    - `/health` → Auth Service
-3. Upload Service validates JWT via shared `get_current_user` dependency
+3. Upload and Parser services validate JWT via shared `get_current_user` dependency
 4. All successful responses use `APIResponse` format:
 
 ```json
@@ -226,7 +237,7 @@ docker compose up --build
 ### Backend Setup
 
 ```bash
-# From project root — recommended (single server, auth + upload on :8000)
+# From project root — recommended (single server, auth + upload + parser on :8000)
 pip install -r requirements.txt
 cp .env.example .env
 python -m uvicorn backend.dev_server:app --reload --port 8000
@@ -236,7 +247,7 @@ python -m uvicorn backend.dev_server:app --reload --port 8000
 ```
 
 **Important:** Use `backend.dev_server` on port **8000**, not `auth_service` alone.
-Auth-only mode does not include `/upload` and will return 404 for uploads.
+Auth-only mode does not include `/upload` or `/parse` and will return 404.
 
 ### Full microservices mode (optional)
 
@@ -247,7 +258,10 @@ python -m uvicorn backend.services.auth_service.main:app --reload --port 8001
 # Terminal 2 — Upload Service
 python -m uvicorn backend.services.upload_service.main:app --reload --port 8002
 
-# Terminal 3 — API Gateway
+# Terminal 3 — Parser Service
+python -m uvicorn backend.services.parser_service.main:app --reload --port 8003
+
+# Terminal 4 — API Gateway
 python -m uvicorn backend.gateway.main:app --reload --port 8000
 ```
 
@@ -273,6 +287,7 @@ pytest tests/ -v
 **Test coverage includes:**
 - Auth: register, login, JWT, refresh, `/me`, password hashing, validation
 - Upload: PDF validation, size limits, CRUD, authorization, response format
+- Parser: PDF parsing, metadata extraction, ownership, error handling
 
 ## Coding Standards
 
@@ -319,4 +334,4 @@ Per the product plan, upcoming features:
 
 ---
 
-**Next feature after Upload:** Paper processing / text extraction service (per PRD).
+**Next feature after Parser:** Text chunking / embedding service for AI chat (per PRD).
