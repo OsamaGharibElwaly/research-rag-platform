@@ -10,6 +10,7 @@ This repository implements an AI Research Paper Assistant using a **microservice
 - Authentication service — implemented and tested
 - Upload service — implemented and tested
 - Parser service — implemented and tested
+- Chunk service — implemented and tested
 - API Gateway — implemented
 - Frontend — minimal auth + upload + parse UI for integration testing
 
@@ -128,6 +129,15 @@ flowchart TB
 
 Request body: `{ "paper_id": 1 }`
 
+### Chunk Service (`:8004`)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/chunk` | Generate semantic chunks from parsed text (protected) |
+
+Request body: `{ "paper_id": 1 }` (optional `config` for chunk size/overlap)
+
 ### API Gateway (`:8000`)
 
 Routes all client requests to the appropriate microservice. Enforces `Authorization` header on protected routes (`/upload`, `/papers`, `/paper/*`, `/parse`).
@@ -189,8 +199,9 @@ sequenceDiagram
    - `/api/auth/*` → Auth Service
    - `/upload`, `/papers`, `/paper/*` → Upload Service
    - `/parse` → Parser Service
+   - `/chunk` → Chunk Service
    - `/health` → Auth Service
-3. Upload and Parser services validate JWT via shared `get_current_user` dependency
+3. Upload, Parser, and Chunk services validate JWT via shared `get_current_user` dependency
 4. All successful responses use `APIResponse` format:
 
 ```json
@@ -237,7 +248,7 @@ docker compose up --build
 ### Backend Setup
 
 ```bash
-# From project root — recommended (single server, auth + upload + parser on :8000)
+# From project root — recommended (single server, auth + upload + parser + chunk on :8000)
 pip install -r requirements.txt
 cp .env.example .env
 python -m uvicorn backend.dev_server:app --reload --port 8000
@@ -247,7 +258,7 @@ python -m uvicorn backend.dev_server:app --reload --port 8000
 ```
 
 **Important:** Use `backend.dev_server` on port **8000**, not `auth_service` alone.
-Auth-only mode does not include `/upload` or `/parse` and will return 404.
+Auth-only mode does not include `/upload`, `/parse`, or `/chunk` and will return 404.
 
 ### Full microservices mode (optional)
 
@@ -258,10 +269,10 @@ python -m uvicorn backend.services.auth_service.main:app --reload --port 8001
 # Terminal 2 — Upload Service
 python -m uvicorn backend.services.upload_service.main:app --reload --port 8002
 
-# Terminal 3 — Parser Service
-python -m uvicorn backend.services.parser_service.main:app --reload --port 8003
+# Terminal 4 — Chunk Service
+python -m uvicorn backend.services.chunk_service.main:app --reload --port 8004
 
-# Terminal 4 — API Gateway
+# Terminal 5 — API Gateway
 python -m uvicorn backend.gateway.main:app --reload --port 8000
 ```
 
@@ -288,6 +299,7 @@ pytest tests/ -v
 - Auth: register, login, JWT, refresh, `/me`, password hashing, validation
 - Upload: PDF validation, size limits, CRUD, authorization, response format
 - Parser: PDF parsing, metadata extraction, ownership, error handling
+- Chunk: semantic chunking, overlap, determinism, configuration
 
 ## Coding Standards
 
@@ -334,4 +346,4 @@ Per the product plan, upcoming features:
 
 ---
 
-**Next feature after Parser:** Text chunking / embedding service for AI chat (per PRD).
+**Next feature after Chunk:** Embedding Service (per PRD).

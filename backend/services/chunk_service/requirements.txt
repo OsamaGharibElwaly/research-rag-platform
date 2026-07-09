@@ -1,0 +1,2 @@
+# Chunk Service Dependencies
+# No extra packages required beyond root requirements.txt

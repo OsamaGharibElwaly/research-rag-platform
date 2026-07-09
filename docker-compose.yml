@@ -46,6 +46,26 @@ services:
     depends_on:
       - upload_service
 
+  chunk_service:
+    build:
+      context: .
+      dockerfile: docker/chunk_service.Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key}
+      - CHUNK_DATABASE_URL=sqlite:///./chunk.db
+      - PARSER_DATABASE_URL=sqlite:///./parser.db
+      - UPLOAD_DATABASE_URL=sqlite:///./upload.db
+      - CHUNK_SERVICE_PORT=8004
+    volumes:
+      - chunk_data:/app
+      - parser_data:/app
+      - upload_data:/app
+    depends_on:
+      - parser_service
+      - upload_service
+
   gateway:
     build:
       context: .
@@ -57,13 +77,16 @@ services:
       - AUTH_SERVICE_URL=http://auth_service:8001
       - UPLOAD_SERVICE_URL=http://upload_service:8002
       - PARSER_SERVICE_URL=http://parser_service:8003
+      - CHUNK_SERVICE_URL=http://chunk_service:8004
     depends_on:
       - auth_service
       - upload_service
       - parser_service
+      - chunk_service
 
 volumes:
   auth_data:
   upload_data:
   upload_files:
   parser_data:
+  chunk_data:

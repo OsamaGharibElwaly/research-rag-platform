@@ -16,9 +16,10 @@ logger = get_logger("api_gateway")
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:8001")
 UPLOAD_SERVICE_URL = os.getenv("UPLOAD_SERVICE_URL", "http://localhost:8002")
 PARSER_SERVICE_URL = os.getenv("PARSER_SERVICE_URL", "http://localhost:8003")
+CHUNK_SERVICE_URL = os.getenv("CHUNK_SERVICE_URL", "http://localhost:8004")
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "8000"))
 
-PROTECTED_PREFIXES = ("/upload", "/papers", "/paper/", "/parse")
+PROTECTED_PREFIXES = ("/upload", "/papers", "/paper/", "/parse", "/chunk")
 
 
 @asynccontextmanager
@@ -66,6 +67,8 @@ def _resolve_upstream(path: str) -> str | None:
         return UPLOAD_SERVICE_URL
     if path.startswith("/parse"):
         return PARSER_SERVICE_URL
+    if path.startswith("/chunk"):
+        return CHUNK_SERVICE_URL
     return None
 
 

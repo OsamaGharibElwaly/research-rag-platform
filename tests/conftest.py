@@ -14,6 +14,9 @@ sys.path.insert(0, str(ROOT_DIR))
 from backend.services.auth_service.main import app as auth_app
 from backend.services.auth_service.models import Base as AuthBase
 from backend.services.auth_service.models import get_db as auth_get_db
+from backend.services.chunk_service.main import app as chunk_app
+from backend.services.chunk_service.models.db import Base as ChunkBase
+from backend.services.chunk_service.models.db import get_db as chunk_get_db
 from backend.services.parser_service.main import app as parser_app
 from backend.services.parser_service.models.db import Base as ParserBase
 from backend.services.parser_service.models.db import get_db as parser_get_db
@@ -25,6 +28,7 @@ from backend.shared.auth import create_access_token
 AUTH_DB_URL = "sqlite:///:memory:"
 UPLOAD_DB_URL = "sqlite:///:memory:"
 PARSER_DB_URL = "sqlite:///:memory:"
+CHUNK_DB_URL = "sqlite:///:memory:"
 
 auth_engine = create_engine(
     AUTH_DB_URL,
@@ -41,14 +45,21 @@ parser_engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
+chunk_engine = create_engine(
+    CHUNK_DB_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 
 AuthTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=auth_engine)
 UploadTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=upload_engine)
 ParserTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=parser_engine)
+ChunkTestingSession = sessionmaker(autocommit=False, autoflush=False, bind=chunk_engine)
 
 AuthBase.metadata.create_all(bind=auth_engine)
 UploadBase.metadata.create_all(bind=upload_engine)
 ParserBase.metadata.create_all(bind=parser_engine)
+ChunkBase.metadata.create_all(bind=chunk_engine)
 
 
 def _auth_db_override():
@@ -75,9 +86,18 @@ def _parser_db_override():
         db.close()
 
 
+def _chunk_db_override():
+    db = ChunkTestingSession()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
 auth_app.dependency_overrides[auth_get_db] = _auth_db_override
 upload_app.dependency_overrides[upload_get_db] = _upload_db_override
 parser_app.dependency_overrides[parser_get_db] = _parser_db_override
+chunk_app.dependency_overrides[chunk_get_db] = _chunk_db_override
 
 
 @pytest.fixture
@@ -107,6 +127,91 @@ def parser_client(tmp_path, monkeypatch):
         UploadTestingSession,
     )
     return TestClient(parser_app)
+
+
+@pytest.fixture
+def chunk_client(tmp_path, monkeypatch):
+    upload_dir = str(tmp_path / "uploads")
+    monkeypatch.setattr("backend.services.upload_service.config.UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr("backend.services.upload_service.services.UPLOAD_DIR", upload_dir)
+    monkeypatch.setattr(
+        "backend.services.parser_service.services.paper_access.engine",
+        upload_engine,
+    )
+    monkeypatch.setattr(
+        "backend.services.parser_service.services.paper_access.UploadSessionLocal",
+        UploadTestingSession,
+    )
+    monkeypatch.setattr(
+        "backend.services.chunk_service.services.paper_access.engine",
+        upload_engine,
+    )
+    monkeypatch.setattr(
+        "backend.services.chunk_service.services.paper_access.UploadSessionLocal",
+        UploadTestingSession,
+    )
+    monkeypatch.setattr(
+        "backend.services.chunk_service.services.parse_access.engine",
+        parser_engine,
+    )
+    monkeypatch.setattr(
+        "backend.services.chunk_service.services.parse_access.ParserSessionLocal",
+        ParserTestingSession,
+    )
+    return TestClient(chunk_app)
+
+
+@pytest.fixture
+def seed_parse_result():
+    def _seed(paper_id: int, user_id: int, text: str, **kwargs):
+        db = ParserTestingSession()
+        try:
+            from backend.services.parser_service.models.db import ParseResult
+
+            db.add(
+                ParseResult(
+                    paper_id=paper_id,
+                    user_id=user_id,
+                    status=kwargs.get("status", "completed"),
+                    text=text,
+                    pages=kwargs.get("pages", 1),
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
+    return _seed
+
+
+@pytest.fixture
+def get_stored_chunks():
+    def _get_chunks(paper_id: int) -> list:
+        db = ChunkTestingSession()
+        try:
+            from backend.services.chunk_service.models.db import Chunk
+
+            return (
+                db.query(Chunk)
+                .filter(Chunk.paper_id == paper_id)
+                .order_by(Chunk.chunk_index.asc())
+                .all()
+            )
+        finally:
+            db.close()
+
+    return _get_chunks
+
+
+@pytest.fixture
+def parsed_paper(upload_client, parser_client, auth_headers, uploaded_paper):
+    response = parser_client.post(
+        "/parse",
+        headers=auth_headers,
+        json={"paper_id": uploaded_paper["id"]},
+    )
+    assert response.status_code == 200
+    return uploaded_paper
 
 
 @pytest.fixture
